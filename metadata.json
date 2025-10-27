@@ -1,0 +1,5 @@
+{
+  "name": "Gum-Gum Outfit Extractor",
+  "description": "Upload an image of an outfit, and this app, inspired by One Piece's Luffy, will use Gemini AI to analyze it and generate new images: a technical sketch, the outfit on a mannequin, and product-style front/back views.",
+  "requestFramePermissions": []
+}
