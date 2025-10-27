@@ -4,9 +4,10 @@ import { Header } from './components/Header';
 import { ImageUploader } from './components/ImageUploader';
 import { GeneratedImageViewer } from './components/GeneratedImageViewer';
 import { Loader } from './components/Loader';
-import { analyzeOutfit, generateImage, editImage } from './services/geminiService';
+import { analyzeOutfit, generateImage, editImage, generateImageFromParts } from './services/geminiService';
 import { GeneratedImage } from './types';
-import { fileToGenerativePart } from './utils/fileUtils';
+import { fileToGenerativePart, base64ToGenerativePart } from './utils/fileUtils';
+import { Part } from '@google/genai';
 
 const App: React.FC = () => {
   const [originalImageFile, setOriginalImageFile] = useState<File | null>(null);
@@ -44,39 +45,54 @@ const App: React.FC = () => {
     setEditedImage(null);
 
     try {
+      // Initial Analysis
       setLoadingMessage('Analyzing outfit... This might take a moment!');
-      const imagePart = await fileToGenerativePart(originalImageFile);
-      const outfitDescription = await analyzeOutfit(imagePart);
+      const originalImagePart = await fileToGenerativePart(originalImageFile);
+      const outfitDescription = await analyzeOutfit(originalImagePart);
 
       if (!outfitDescription) {
         throw new Error('Could not analyze the outfit from the image.');
       }
       
-      setLoadingMessage('Generating new images... The Grand Line wasn\'t built in a day!');
-      const prompts = [
-        {
-          title: 'Technical Sheet',
-          prompt: `Generate a 'ficha tecnica' or technical flat sketch of this outfit: ${outfitDescription}. The image should be on a white background and include annotations pointing to key details like stitching, fabric type, buttons, and cut lines. The style should be clean and professional, like a fashion designer's sketch.`,
-        },
-        {
+      // --- Step 1: Generate Technical Sheet ---
+      setLoadingMessage("Step 1/3: Sketching the technical sheet...");
+      const techSheetPrompt = `Generate a 'ficha tecnica' or technical flat sketch of this outfit: ${outfitDescription}. The image should be on a white background and include annotations pointing to key details like stitching, fabric type, buttons, and cut lines. The style should be clean and professional, like a fashion designer's sketch.`;
+      const techSheetImageData = await generateImage(techSheetPrompt);
+      const techSheetImage: GeneratedImage = {
+        title: 'Technical Sheet',
+        src: `data:image/png;base64,${techSheetImageData}`,
+      };
+      setGeneratedImages([techSheetImage]); // Show the first image immediately
+      const techSheetImagePart = base64ToGenerativePart(techSheetImageData);
+
+      // --- Step 2: Generate Mannequin Image ---
+      setLoadingMessage("Step 2/3: Dressing the mannequin...");
+      const mannequinPrompt = `Using the original photo (for context) and the provided technical sketch (as a precise guide), generate a photorealistic image of this outfit on a featureless, neutral grey mannequin in a well-lit studio setting. Adhere strictly to the details in the technical sketch. Original description: ${outfitDescription}`;
+      const mannequinImageData = await generateImageFromParts([
+        originalImagePart,
+        techSheetImagePart,
+        { text: mannequinPrompt }
+      ]);
+      const mannequinImage: GeneratedImage = {
           title: 'On a Mannequin',
-          prompt: `Generate a photorealistic image of this outfit on a featureless, neutral grey mannequin in a well-lit studio setting: ${outfitDescription}.`,
-        },
-        {
+          src: `data:image/png;base64,${mannequinImageData}`,
+      };
+      setGeneratedImages(prev => [...prev, mannequinImage]);
+      const mannequinImagePart = base64ToGenerativePart(mannequinImageData);
+      
+      // --- Step 3: Generate Front and Back View ---
+      setLoadingMessage("Step 3/3: Creating the product view...");
+      const frontBackPrompt = `Using the technical sketch for structural accuracy and the mannequin image for realistic texture and lighting, generate a single image showing the front and back views of the outfit side-by-side. The outfit must be presented as a 'flat lay' or floating on a plain white background, with absolutely no human or mannequin form visible. The back view must be a logical and accurate interpretation based on the provided front-view images. Original description: ${outfitDescription}.`;
+       const frontBackImageData = await generateImageFromParts([
+        techSheetImagePart,
+        mannequinImagePart,
+        { text: frontBackPrompt }
+      ]);
+      const frontBackImage: GeneratedImage = {
           title: 'Front and Back View',
-          prompt: `Generate a single image showing two views of this outfit for an e-commerce product listing on a plain white background. The outfit should be presented as a 'flat lay' or as if floating, with absolutely no visible mannequin or human form. One view must be the front, and the other must be the back, placed side-by-side. The presentation should be clean and professional. Ensure NO human person is visible in the image: ${outfitDescription}.`,
-        },
-      ];
-
-      const generationPromises = prompts.map(p => 
-        generateImage(p.prompt).then(imageData => ({
-          title: p.title,
-          src: `data:image/png;base64,${imageData}`,
-        }))
-      );
-
-      const newImages = await Promise.all(generationPromises);
-      setGeneratedImages(newImages);
+          src: `data:image/png;base64,${frontBackImageData}`,
+      };
+      setGeneratedImages(prev => [...prev, frontBackImage]);
 
     } catch (err) {
       console.error(err);

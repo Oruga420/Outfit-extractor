@@ -41,7 +41,6 @@ export async function generateImage(prompt: string): Promise<string> {
     throw new Error('Image generation failed or did not return an image.');
 }
 
-
 export async function editImage(imagePart: Part, prompt: string): Promise<string> {
     const model = 'gemini-2.5-flash-image';
     
@@ -62,4 +61,24 @@ export async function editImage(imagePart: Part, prompt: string): Promise<string
     }
 
     throw new Error('Image editing failed or did not return an image.');
+}
+
+export async function generateImageFromParts(parts: Part[]): Promise<string> {
+    const model = 'gemini-2.5-flash-image';
+    
+    const response = await ai.models.generateContent({
+        model,
+        contents: { parts },
+        config: {
+            responseModalities: [Modality.IMAGE],
+        },
+    });
+
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+        if (part.inlineData) {
+            return part.inlineData.data;
+        }
+    }
+
+    throw new Error('Image generation from parts failed or did not return an image.');
 }

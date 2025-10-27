@@ -28,3 +28,12 @@ export async function fileToGenerativePart(file: File): Promise<Part> {
     },
   };
 }
+
+export function base64ToGenerativePart(base64Data: string, mimeType: string = 'image/png'): Part {
+    return {
+        inlineData: {
+            mimeType,
+            data: base64Data,
+        },
+    };
+}
